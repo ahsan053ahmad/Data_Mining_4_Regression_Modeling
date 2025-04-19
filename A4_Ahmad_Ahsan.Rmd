@@ -1,0 +1,346 @@
+---
+title: "Regression models, model fit and prediction errors"
+author: "Ahsan Ahmad"
+date: "March 24, 2024"
+output: 
+  html_document:
+    number_sections: yes
+    toc: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error = FALSE, warning = FALSE)
+```
+
+# Libraries
+
+```{r library}
+library(tidyverse)
+library(psych)
+library(caret)
+library(rminer)
+library(rmarkdown)
+library(matrixStats)
+library(knitr)
+library(rpart)
+library(RWeka)
+```
+
+# Set up, data import, data exploration, data partitioning, and inspection code
+
+Before proceeding with the analysis, it's essential to set up the working directory and import the data from a CSV file named 'NA_sales_filtered.csv'. This code chunk also inspects the structure of the dataset and converts string data into factors for further analysis. Latly, the code chunk does data partition to create a 70-30 split for train and test data sets.
+
+```{r Set up, data import and inspection}
+
+# Setting up working directory and importing data from a csv file
+
+cloud_wd <- getwd()
+setwd(cloud_wd)
+
+NA_sales <- read.csv(file = "NA_sales_filtered.csv", stringsAsFactors = TRUE)
+
+# Looking at the structure and summary of the data
+
+str(NA_sales)
+summary(NA_sales)
+
+# Using cor and pairs.panels to compute correlation matrix and display correlations of the listed numeric variables
+
+NA_sales %>% select(Critic_Score, Critic_Count, User_Score, User_Count, NA_Sales) %>% cor()
+NA_sales %>% select(Critic_Score, Critic_Count, User_Score, User_Count, NA_Sales) %>% pairs.panels()
+
+# Removing names column from the dataset and storing it in a new dataset
+
+Sales <- NA_sales[,-1]
+
+# Creating a linear regression model with the new dataset
+
+linear_reg_model <- lm(NA_Sales ~ ., data = Sales)
+summary(linear_reg_model)
+
+set.seed(100)  #Creating data partition by using 70% of data for the training set and 30% for the test set
+Sales_Train <- createDataPartition(Sales$NA_Sales, p=0.7, list=FALSE)
+
+train_set <- Sales[Sales_Train,]  #spliting the dataset using the indexes
+test_set <- Sales[-Sales_Train,]
+
+summary(train_set)
+summary(test_set)
+
+```
+
+# lm, rpart and M5P model training and testing
+
+This R code chunk fits and trains three different models (linear regression, decision tree, and M5P) using a training dataset (train_set). Then, it generates predictions for each model on both the training and testing datasets (test_set). After that, it calculates multiple prediction evaluation metrics using the mmetric function from the rminer package for each model's predictions on both training and testing data. Finally, it reports the performance metrics for each model on both datasets.
+
+```{r fit and train different models}
+
+# Building all three models using training dataset
+
+lm_train_model <- lm(NA_Sales ~ ., data = test_set)
+
+rpart_train_model <- rpart(NA_Sales ~ ., data = test_set)
+
+m5p_train_model <- M5P(NA_Sales ~ ., data = test_set)
+
+# Generating prediction for the default lm model for both the train and test set
+
+lm_model_train_predictions <- predict(lm_train_model,train_set)
+lm_model_test_predictions <- predict(lm_train_model,test_set)
+
+# Generating multiple prediction evaluation metrics using rminer package
+
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+# performance of predictions on training data
+mmetric(train_set$NA_Sales,lm_model_train_predictions,metrics_list)
+# performance of predictions on testing data 
+mmetric(test_set$NA_Sales,lm_model_test_predictions,metrics_list)
+
+# Generating prediction for the default rpart model for both the train and test set
+
+rpart_model_train_predictions <- predict(rpart_train_model,train_set)
+rpart_model_test_predictions <- predict(rpart_train_model,test_set)
+
+# performance of predictions on training data
+mmetric(train_set$NA_Sales,rpart_model_train_predictions,metrics_list)
+# performance of predictions on testing data 
+mmetric(test_set$NA_Sales,rpart_model_test_predictions,metrics_list)
+
+# Generating prediction for the default M5P model for both the train and test set
+
+m5p_model_train_predictions <- predict(m5p_train_model,train_set)
+m5p_model_test_predictions <- predict(m5p_train_model,test_set)
+
+# performance of predictions on training data
+mmetric(train_set$NA_Sales,m5p_model_train_predictions,metrics_list)
+# performance of predictions on testing data 
+mmetric(test_set$NA_Sales,m5p_model_test_predictions,metrics_list)
+
+ 
+```
+
+
+# Cross-validation of lm, rpart, and M5P NA_Sales prediction models
+
+This R code defines a cross-validation function (cv_function) to evaluate model performance using 5-fold cross-validation. It takes a dataframe (df), target variable index (target), number of folds (nFolds), and evaluation metrics list (metrics_list). Then, it iterates through different prediction methods (linear regression, decision tree, and M5P), prints model summaries, computes evaluation metrics, and presents results in a table format. Finally, it calls cv_function three times for each prediction method on the Sales dataset.
+
+```{r Define cv_function and call it for different models}
+
+cv_function <- function(df, target, nFolds, seedVal, classification, metrics_list)
+{
+  set.seed(seedVal)
+  folds = createFolds(df[,target],nFolds) 
+  
+  cv_results <- lapply(folds, function(x)
+{
+  test_target <- df[x,target]
+  test_input <- df[x,-target]
+  
+  train_target <- df[-x,target]
+  train_input <- df[-x,-target]
+   
+  pred_model <- prediction_method(train_target~.,train_input)
+  # compare the trained linear regression model by fold
+  #print(summary(pred_model))
+  
+  pred <- predict(pred_model, test_input)
+# return saves performance results in cv_results[[i]]
+  return(mmetric(test_target,pred,metrics_list))
+})
+  
+  cv_results_m <- as.matrix(as.data.frame(cv_results))
+  
+  cv_mean<- as.matrix(rowMeans(cv_results_m))
+  
+  colnames(cv_mean) <- "Mean"
+  
+  cv_sd <- as.matrix(rowSds(cv_results_m))
+  
+  colnames(cv_sd) <- "Sd"
+  
+  cv_all <- cbind(cv_results_m, cv_mean, cv_sd)
+  
+  kable(cv_all,digits=2)
+}
+
+# Using the CV_Function to evaluate 5-fold lm,rpart and C5P model evaluation performance.
+
+# 5-fold, lm
+
+df <- Sales
+target <- 8
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",lm)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+# 5-fold, rpart
+
+df <- Sales
+target <- 8
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",rpart)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+# 5-fold, M5P
+
+df <- Sales
+target <- 8
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",M5P)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+```
+
+
+# Improve the models by adding a quadratic term of Critic_Score
+
+This R code enhances a linear regression (lm) model by adding a quadratic term for Critic_Score. It then evaluates the model's performance on training and testing data. Subsequently, it utilizes the cv_function to assess the performance of the enhanced model and two other models (rpart and M5P) using 5-fold cross-validation.
+
+```{r Improve lm model with quadratic term}
+
+# add a higher-order "Critic_Score" term
+Sales$Critic_Score_Squared <- Sales$Critic_Score^2
+
+# Building an lm model with the new quadratic term
+lm_train_model_2 <- lm(NA_Sales ~ ., data = Sales)
+
+summary(lm_train_model_2)
+
+set.seed(100)  #Creating data partition by using 70% of data for the training set and 30% for the test set
+Sales_Train_2 <- createDataPartition(Sales$NA_Sales, p=0.7, list=FALSE)
+
+train_set_2 <- Sales[Sales_Train_2,]  #spliting the dataset using the indexes
+test_set_2 <- Sales[-Sales_Train_2,]
+
+# Generating prediction for the new lm model for both the train and test set
+
+lm_model_train_predictions_2 <- predict(lm_train_model_2,train_set_2)
+lm_model_test_predictions_2 <- predict(lm_train_model_2,test_set_2)
+
+# performance of predictions on training data
+mmetric(train_set_2$NA_Sales,lm_model_train_predictions_2,metrics_list)
+# performance of predictions on testing data 
+mmetric(test_set_2$NA_Sales,lm_model_test_predictions_2,metrics_list)
+
+# Using the CV_Function to evaluate 5-fold lm,rpart and C5P model evaluation performance with quadratic term of Critic_Square.
+
+# 5-fold, lm
+
+df <- Sales
+target <- 8
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",lm)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+# 5-fold, rpart
+
+df <- Sales
+target <- 8
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",rpart)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+# 5-fold, M5P
+
+df <- Sales
+target <- 8
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",M5P)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+
+```
+
+
+# Improve the models with the log term of User_Count
+
+This code chunk improves a linear regression (lm) model by incorporating a log transformation of the User_Count term. After building the enhanced model, it evaluates its performance using summary statistics. Then, it proceeds to utilize the cv_function to assess the performance of the enhanced model and two other models (rpart and M5P) using 5-fold cross-validation.
+
+```{r Improve lm model with log transformation}
+
+# add a log_transformation of the "User_Count" term
+Sales$log_User_Count <- log(Sales$User_Count)
+
+# Building an lm model with the new quadratic term
+lm_train_model_3 <- lm(NA_Sales ~ Platform + Genre + Rating + Critic_Score + Critic_Count + User_Score + log_User_Count, data = Sales)
+
+summary(lm_train_model_3)
+
+Sales <- Sales[,-7]
+
+# Using the CV_Function to evaluate 5-fold lm,rpart and C5P model evaluation performance with log term of User_Count.
+
+# 5-fold, lm
+
+df <- Sales
+target <- 7
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",lm)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+# 5-fold, rpart
+
+df <- Sales
+target <- 7
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",rpart)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+# 5-fold, M5P
+
+df <- Sales
+target <- 7
+nFolds <- 5
+seedVal <- 500
+assign("prediction_method",M5P)
+metrics_list <- c("MAE","RMSE","MAPE","RMSPE","RAE", "RRSE", "R2")
+
+cv_function(df, target, nFolds, seedVal, classification, metrics_list)
+
+```
+
+# Results and Reflections
+
+1. Which predictor would you recommend to remove to keep the models more parsimonious? Give your reasons based on supporting empirical information from data exploration and/or model summary and performance. (parsimonious in this context means using as few predictors as possible while still maintaining high quality in the model)
+
+From the correlation matrix of the numeric variables with the target variable it can be seen that User_Score is the most least related to NA_Sales with a value of 0.145 moreover, it is highly correlated with Critic_Score with a value of 0.58 hence we can remove it and keep the models more parisminious.
+
+2. What are the reasons why the log of User_Count is more effective than User_Count in predicting sales based on both model fit and prediction error measures? Provide supporting empirical evidence including information from data exploration and model performance for your reasons. 
+
+The RMSE for model with using the log transformation has a mean of 0.43 while the RMSE in which a log transformation is applied to the User_Count predictor has a RMSE mean of 0.39 showing a reduction in errors overall with log transformation.
+
+3. In addition to adding the quadratic term of Critic_Score to the predictors of a linear regression model, would you recommend adding the quadratic term of User_Count to the model also? Explain the reason for your recommendation. Provide supporting empirical information from data exploration and/or model performance.
+
+Referring to the graph between User_Count and NA_Sales it can be seen that the count is very high for the lower values and the distribution is highly right skewed, hence the best transformation for User_Count would be log like we did above rather than Critic_Score which has a distribution close to quadratic as seen from the scatter plot in pairs panel.
+
+4. What have you learned from building each of these models and the modeling impact of your adjustments to the hyperparameters or dataset? If you were explaining the results of these models to a supervisor what would you say about them?
+
+It can be seen from the metric of the models that the lm and C5P models are more sensitive to the quadratic and log transformation predictors as compared to rpart models which has almost the same mean and standard deviation of RMSE, MAE and other metrics. Overall, the difference between all three models for this particular dataset is not too significant when there performance are compared. Overall, MP5 has the best model fit or R2 value for this dataset, seconded by lm and lastly by rpart models. Overall, doing the quadratic and log transformation also has the most affect on MP5 models followed by the lm models.
+
