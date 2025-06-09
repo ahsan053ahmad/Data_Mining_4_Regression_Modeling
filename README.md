@@ -4,7 +4,7 @@ This repository contains an R Markdown assignment report that explores linear re
 
 ---
 
-### 🧩 Business Problem
+### Business Problem
 
 Understanding the relationship between input variables and a continuous outcome is a foundational task in many domains, from economics to marketing to engineering. Regression models provide a way to predict numeric responses, explain key relationships, and assess model assumptions.
 
@@ -12,7 +12,7 @@ This assignment focused on creating a linear regression model to predict a conti
 
 ---
 
-### 🎯 Project Objective
+### Project Objective
 
 The primary goals of this assignment were:
 
@@ -24,7 +24,7 @@ The primary goals of this assignment were:
 
 ---
 
-### 🛠️ Solution Approach
+### Solution Approach
 
 The assignment followed a thoughtful modeling process:
 
@@ -42,7 +42,7 @@ The assignment followed a thoughtful modeling process:
 
 ---
 
-### 💡 Business Value
+### Business Value
 
 While the assignment was academic, the methodology applies broadly in industry:
 
@@ -53,7 +53,7 @@ While the assignment was academic, the methodology applies broadly in industry:
 
 ---
 
-### 🚧 Challenges Encountered
+### Challenges Encountered
 
 - **Interaction Effects**: Understanding how variables jointly affect the outcome required thoughtful interpretation
 - **Multicollinearity**: Including interaction terms risked correlated predictors, affecting coefficient stability
